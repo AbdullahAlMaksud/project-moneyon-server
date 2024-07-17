@@ -27,7 +27,8 @@ async function connectToMongoDB() {
 
         // Register a new user
         app.post('/api/auth/register', async (req, res) => {
-            const { name, pin, mobileNumber, email } = req.body;
+            const { name, pin, mobileNumber, email, role, photoURL } = req.body;
+            console.log({ name, pin, email, mobileNumber, role, photoURL });
 
             try {
                 // Check if user already exists
@@ -46,6 +47,8 @@ async function connectToMongoDB() {
                     pin: hashedPin,
                     mobileNumber,
                     email,
+                    role,
+                    photoURL,
                     balance: 0,
                     status: 'pending',
                     createdAt: new Date(),
@@ -55,43 +58,51 @@ async function connectToMongoDB() {
                 // Save user to database
                 await usersCollection.insertOne(newUser);
 
-                res.status(201).json({ message: 'User registered successfully. Awaiting admin approval.' });
+                res.status(201).json({ message: 'User registered successfully. Awaiting admin approval.', newUser });
             } catch (error) {
                 res.status(500).json({ message: 'Server error. Please try again later.' });
             }
         });
+
 
         // Login user
         app.post('/api/auth/login', async (req, res) => {
             const { emailOrMobile, pin } = req.body;
 
             try {
-                // Find the user by email or mobile number
-                const user = await usersCollection.findOne({ $or: [{ mobileNumber: emailOrMobile }, { email: emailOrMobile }] });
+                // Find user by email or mobile number
+                const user = await usersCollection.findOne({
+                    $or: [{ mobileNumber: emailOrMobile }, { email: emailOrMobile }]
+                });
+
                 if (!user) {
-                    return res.status(400).json({ message: 'User not found' });
+                    return res.status(400).json({ message: 'Invalid credentials' });
                 }
 
-                // Compare the provided pin with the hashed pin
+                // Check PIN
                 const isMatch = await bcrypt.compare(pin, user.pin);
                 if (!isMatch) {
                     return res.status(400).json({ message: 'Invalid credentials' });
                 }
 
-                // If user is found and pin matches
-                res.status(200).json({
-                    id: user._id,
-                    name: user.name,
-                    mobileNumber: user.mobileNumber,
-                    email: user.email,
-                    balance: user.balance,
-                    status: user.status,
-                    createdAt: user.createdAt,
-                    updatedAt: user.updatedAt
-                });
+                // Return user information
+                const { name, mobileNumber, balance, photoURL, role } = user;
+                res.status(200).json({ name, mobileNumber, balance, photoURL, role });
             } catch (error) {
                 res.status(500).json({ message: 'Server error. Please try again later.' });
             }
+        });
+
+        app.post('/api/auth/logout', (req, res) => {
+            // Clear session/token data here if applicable
+            // Example: Clearing user session/token
+            req.session?.destroy(err => {
+                if (err) {
+                    return res.status(500).json({ message: 'Failed to logout' });
+                }
+                res.clearCookie('session-cookie'); // Example: Clearing session cookie if used
+                res.status(200).json({ message: 'Logout successful' });
+            });
         });
 
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
